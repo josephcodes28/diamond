@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diamond</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #0d1b2a; color: #f0f0f0;
+           display: flex; flex-direction: column; align-items: center;
+           justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
+    h1 { color: #7fdbff; }
+    #status { font-size: 20px; text-align: center; min-height: 60px; max-width: 500px; }
+    button { font-size: 20px; padding: 16px 28px; margin: 8px; border: none;
+             border-radius: 10px; background: #7fdbff; color: #0d1b2a; cursor: pointer; }
+    #stop { background: #ff6b6b; color: white; }
+  </style>
+</head>
+<body>
+  <h1>Diamond</h1>
+  <div id="status">Tap the mic and talk to me.</div>
+  <button id="mic">🎤 Talk</button>
+  <button id="stop">Stop</button>
+
+<script>
+  const statusEl = document.getElementById("status");
+  const micBtn = document.getElementById("mic");
+  const stopBtn = document.getElementById("stop");
+
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const recognition = SpeechRec ? new SpeechRec() : null;
+  if (recognition) {
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+  }
+
+  function say(text) {
+    statusEl.textContent = text;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "en-US";
+    speechSynthesis.speak(u);
+  }
+
+  function stopSpeaking() {
+    speechSynthesis.cancel();
+    statusEl.textContent = "Diamond is quiet.";
+  }
+
+  function handleCommand(raw) {
+    const cmd = raw.toLowerCase().trim();
+
+    if (["shut up", "enough", "stop", "be quiet"].some(w => cmd.includes(w))) {
+      stopSpeaking();
+      return;
+    }
+    if (cmd.includes("open youtube")) {
+      say("Opening YouTube.");
+      window.open("https://www.youtube.com", "_blank");
+      return;
+    }
+    if (cmd.startsWith("search for ") || cmd.startsWith("search ")) {
+      const query = cmd.replace(/^search( for)?\s+/, "");
+      say("Searching for " + query);
+      window.open("https://www.google.com/search?q=" + encodeURIComponent(query), "_blank");
+      return;
+    }
+    if (cmd.startsWith("play ")) {
+      const query = cmd.replace(/^play\s+/, "");
+      say("Playing " + query + " on YouTube.");
+      window.open("https://www.youtube.com/results?search_query=" + encodeURIComponent(query), "_blank");
+      return;
+    }
+    say("I heard: " + raw + ". I can open YouTube, search the web, or play something. What do you want me to do?");
+  }
+
+  micBtn.addEventListener("click", () => {
+    if (!recognition) {
+      say("Voice input is not supported in this browser. Try Chrome.");
+      return;
+    }
+    say("Hello sir, I am Diamond. What do you want me to do for you today?");
+    setTimeout(() => {
+      statusEl.textContent = "Listening...";
+      recognition.start();
+    }, 2500);
+  });
+
+  if (recognition) {
+    recognition.onresult = (event) => {
+      handleCommand(event.results[0][0].transcript);
+    };
+    recognition.onerror = () => {
+      statusEl.textContent = "I didn't catch that. Tap Talk and try again.";
+    };
+  }
+
+  stopBtn.addEventListener("click", stopSpeaking);
+
+  // Greet on open
+  window.addEventListener("load", () => {
+    say("Hello sir, I am Diamond. Tap the mic when you're ready.");
+  });
+</script>
+</body>
+</html>
