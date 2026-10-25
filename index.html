@@ -1,105 +1,252 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Diamond</title>
-  <style>
-    body { font-family: Arial, sans-serif; background: #0d1b2a; color: #f0f0f0;
-           display: flex; flex-direction: column; align-items: center;
-           justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
-    h1 { color: #7fdbff; }
-    #status { font-size: 20px; text-align: center; min-height: 60px; max-width: 500px; }
-    button { font-size: 20px; padding: 16px 28px; margin: 8px; border: none;
-             border-radius: 10px; background: #7fdbff; color: #0d1b2a; cursor: pointer; }
-    #stop { background: #ff6b6b; color: white; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diamond</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #0d1b2a; color: #f0f0f0;
+         display: flex; flex-direction: column; align-items: center;
+         justify-content: center; min-height: 100vh; margin: 0; padding: 20px; text-align: center; }
+  h1 { color: #7fdbff; font-size: 48px; margin: 0; }
+  #status { font-size: 20px; min-height: 70px; max-width: 500px; margin: 20px 0; }
+  #heard { font-size: 14px; color: #8899aa; min-height: 20px; }
+  .orb { width: 120px; height: 120px; border-radius: 50%; background: #7fdbff;
+         margin: 20px auto; box-shadow: 0 0 30px #7fdbff; transition: background .3s; }
+  .orb.listening { animation: pulse 1.2s infinite; }
+  .orb.speaking { background: #ffd166; box-shadow: 0 0 40px #ffd166; }
+  @keyframes pulse { 50% { transform: scale(1.15); } }
+  button { font-size: 20px; padding: 16px 28px; margin: 8px; border: none;
+           border-radius: 10px; background: #7fdbff; color: #0d1b2a; cursor: pointer; }
+  #stop { background: #ff6b6b; color: #fff; }
+</style>
 </head>
 <body>
-  <h1>Diamond</h1>
-  <div id="status">Tap the mic and talk to me.</div>
-  <button id="mic">🎤 Talk</button>
-  <button id="stop">Stop</button>
+<h1>Diamond</h1>
+<div id="orb" class="orb"></div>
+<div id="status">Tap Start once to wake Diamond.</div>
+<div id="heard"></div>
+<button id="start">Start Diamond</button>
+<button id="stop">Stop</button>
 
 <script>
-  const statusEl = document.getElementById("status");
-  const micBtn = document.getElementById("mic");
-  const stopBtn = document.getElementById("stop");
+  // Replace these with real numbers, including country code (example: +15551234567)
+  const CONTACTS = { mom: "+10000000000", dad: "+10000000001" };
+  const WAKE_WORDS = ["hey diamond", "hello diamond", "hi diamond", "okay diamond"];
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const recognition = SpeechRec ? new SpeechRec() : null;
-  if (recognition) {
-    recognition.lang = "en-US";
-    recognition.interimResults = false;
+  const statusEl = document.getElementById("status");
+  const heardEl = document.getElementById("heard");
+  const orb = document.getElementById("orb");
+
+  let listening = false, awake = false, speaking = false;
+  let recognition = null, flashTrack = null, flashOn = false;
+  let speakId = 0, sleepTimer = null;
+
+  function setStatus(t) { statusEl.textContent = t; }
+
+  function wakeUp() {
+    awake = true;
+    clearTimeout(sleepTimer);
+    sleepTimer = setTimeout(() => {
+      awake = false;
+      setStatus("Say Hey Diamond or clap twice to wake me.");
+    }, 30000);
   }
 
-  function say(text) {
-    statusEl.textContent = text;
+  function restartListening() {
+    if (listening && !speaking && recognition) {
+      try { recognition.start(); } catch (e) {}
+    }
+  }
+
+  function speak(text) {
+    setStatus(text);
+    const id = ++speakId;
     speechSynthesis.cancel();
+    speaking = true;
+    orb.className = "orb speaking";
+    if (recognition) { try { recognition.abort(); } catch (e) {} }
+
     const u = new SpeechSynthesisUtterance(text);
     u.lang = "en-US";
+    const done = () => {
+      if (id !== speakId) return;
+      speaking = false;
+      orb.className = "orb listening";
+      restartListening();
+    };
+    u.onend = done;
+    u.onerror = done;
     speechSynthesis.speak(u);
   }
 
-  function stopSpeaking() {
+  function stopAll() {
+    speakId++;
     speechSynthesis.cancel();
-    statusEl.textContent = "Diamond is quiet.";
+    speaking = false;
+    awake = false;
+    orb.className = "orb listening";
+    setStatus("Diamond is quiet. Say Hey Diamond to wake me.");
+    restartListening();
   }
 
-  function handleCommand(raw) {
-    const cmd = raw.toLowerCase().trim();
+  function greet() {
+    wakeUp();
+    speak("Hello sir, I am Diamond. What do you want me to do for you today?");
+  }
 
-    if (["shut up", "enough", "stop", "be quiet"].some(w => cmd.includes(w))) {
-      stopSpeaking();
+  function makeRecognizer() {
+    const r = new SR();
+    r.lang = "en-US";
+    r.continuous = true;
+    r.interimResults = false;
+    r.onresult = (e) => {
+      const last = e.results[e.results.length - 1][0].transcript.toLowerCase().trim();
+      heardEl.textContent = "Heard: " + last;
+      handleSpeech(last);
+    };
+    r.onend = () => restartListening();
+    r.onerror = (e) => {
+      if (e.error === "not-allowed") {
+        setStatus("Microphone is blocked. Allow it in Chrome's site settings.");
+        listening = false;
+      }
+    };
+    return r;
+  }
+
+  function handleSpeech(text) {
+    const wake = WAKE_WORDS.find(w => text.includes(w));
+    if (!awake && !wake) return;
+
+    if (wake) {
+      wakeUp();
+      const rest = text.split(wake)[1].trim();
+      if (!rest) { greet(); return; }
+      text = rest;
+    }
+    wakeUp();
+
+    if (/shut up|enough|be quiet|stop talking/.test(text)) {
+      stopAll();
       return;
     }
-    if (cmd.includes("open youtube")) {
-      say("Opening YouTube.");
+    if (/flash ?light|torch/.test(text)) {
+      const turnOn = /turn on|on/.test(text) && !/off/.test(text);
+      const turnOff = /off/.test(text);
+      toggleFlash(turnOff ? false : turnOn ? true : !flashOn);
+      return;
+    }
+    const callMatch = text.match(/^call (.+)/);
+    if (callMatch) {
+      const who = callMatch[1].trim();
+      const num = CONTACTS[who];
+      if (num) {
+        speak("Calling " + who + ".");
+        location.href = "tel:" + num;
+      } else {
+        speak("I don't have " + who + " saved yet. Add the number in the code.");
+      }
+      return;
+    }
+    if (text.includes("open youtube")) {
       window.open("https://www.youtube.com", "_blank");
+      speak("Opening YouTube.");
       return;
     }
-    if (cmd.startsWith("search for ") || cmd.startsWith("search ")) {
-      const query = cmd.replace(/^search( for)?\s+/, "");
-      say("Searching for " + query);
-      window.open("https://www.google.com/search?q=" + encodeURIComponent(query), "_blank");
+    if (text.startsWith("play ")) {
+      const q = text.replace(/^play\s+/, "");
+      window.open("https://www.youtube.com/results?search_query=" + encodeURIComponent(q), "_blank");
+      speak("Playing " + q + " on YouTube.");
       return;
     }
-    if (cmd.startsWith("play ")) {
-      const query = cmd.replace(/^play\s+/, "");
-      say("Playing " + query + " on YouTube.");
-      window.open("https://www.youtube.com/results?search_query=" + encodeURIComponent(query), "_blank");
+    if (text.startsWith("search")) {
+      const q = text.replace(/^search( the web)?( for)?\s*/, "");
+      window.open("https://www.google.com/search?q=" + encodeURIComponent(q), "_blank");
+      speak("Searching for " + q + ".");
       return;
     }
-    say("I heard: " + raw + ". I can open YouTube, search the web, or play something. What do you want me to do?");
+    askDiamond(text);
   }
 
-  micBtn.addEventListener("click", () => {
-    if (!recognition) {
-      say("Voice input is not supported in this browser. Try Chrome.");
-      return;
+  async function askDiamond(question) {
+    setStatus("Thinking...");
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: question })
+      });
+      const data = await res.json();
+      speak(data.reply || data.error || "Something went wrong.");
+    } catch (e) {
+      speak("I'm offline right now. I can still call, open YouTube, search, or use the flashlight.");
     }
-    say("Hello sir, I am Diamond. What do you want me to do for you today?");
-    setTimeout(() => {
-      statusEl.textContent = "Listening...";
-      recognition.start();
-    }, 2500);
-  });
-
-  if (recognition) {
-    recognition.onresult = (event) => {
-      handleCommand(event.results[0][0].transcript);
-    };
-    recognition.onerror = () => {
-      statusEl.textContent = "I didn't catch that. Tap Talk and try again.";
-    };
   }
 
-  stopBtn.addEventListener("click", stopSpeaking);
+  async function toggleFlash(on) {
+    try {
+      if (!flashTrack) {
+        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        flashTrack = s.getVideoTracks()[0];
+      }
+      await flashTrack.applyConstraints({ advanced: [{ torch: on }] });
+      flashOn = on;
+      speak(on ? "Flashlight on." : "Flashlight off.");
+    } catch (e) {
+      speak("This browser can't control the flashlight on your phone. The Android app can do this later.");
+    }
+  }
 
-  // Greet on open
-  window.addEventListener("load", () => {
-    say("Hello sir, I am Diamond. Tap the mic when you're ready.");
+  function startClapDetector(stream) {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    src.connect(analyser);
+    const buf = new Float32Array(analyser.fftSize);
+    let lastClap = 0, lastPeak = 0;
+
+    setInterval(() => {
+      analyser.getFloatTimeDomainData(buf);
+      let peak = 0;
+      for (const v of buf) peak = Math.max(peak, Math.abs(v));
+      const now = Date.now();
+      // Threshold 0.3: if claps are missed, lower it. If random noise triggers it, raise it.
+      if (peak > 0.3 && now - lastPeak > 200) {
+        lastPeak = now;
+        if (lastClap && now - lastClap < 1000) {
+          lastClap = 0;
+          speechSynthesis.cancel();
+          speaking = false;
+          greet();
+        } else {
+          lastClap = now;
+        }
+      }
+    }, 50);
+  }
+
+  document.getElementById("start").addEventListener("click", async () => {
+    if (!SR) {
+      setStatus("Voice is not supported in this browser. Please open this page in Chrome.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      startClapDetector(stream);
+    } catch (e) {
+      setStatus("Please allow the microphone, then tap Start again.");
+      return;
+    }
+    listening = true;
+    recognition = makeRecognizer();
+    try { recognition.start(); } catch (e) {}
+    greet();
   });
+
+  document.getElementById("stop").addEventListener("click", stopAll);
 </script>
 </body>
 </html>
