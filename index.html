@@ -41,51 +41,58 @@
   function setStatus(t) { statusEl.textContent = t; log("STATUS: " + t); }
 
   function startRec() {
-    if (!rec || !wantListening || speaking) return;
-    try { rec.start(); log("listening..."); } catch (e) { log("start skipped: " + e.message); }
+  if (!rec || !wantListening || speaking) return;
+  try { rec.start(); } catch (e) {}
   }
 
   function speak(text, after) {
-    setStatus(text);
-    speaking = true;
-    try { rec && rec.abort(); } catch (e) {}
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = "en-US";
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      speaking = false;
-      log("finished speaking");
-      setTimeout(() => { if (after) after(); startRec(); }, 800);
-    };
-    u.onend = finish;
-    u.onerror = (e) => { log("voice error: " + e.error); finish(); };
-    speechSynthesis.speak(u);
-    setTimeout(finish, Math.min(20000, 2000 + text.length * 90));
+  setStatus(text);
+  speaking = true;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "en-US";
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    speaking = false;
+    log("finished speaking");
+    setTimeout(() => { if (after) after(); startRec(); }, 800);
+  };
+  u.onend = finish;
+  u.onerror = (e) => { log("voice error: " + e.error); finish(); };
+  speechSynthesis.speak(u);
+  setTimeout(finish, Math.min(20000, 2000 + text.length * 90));
   }
+  
 
   function wake() { awakeUntil = Date.now() + 60000; }
   function isAwake() { return Date.now() < awakeUntil; }
 
   function setupRec() {
-    rec = new SR();
-    rec.lang = "en-US";
-    rec.continuous = false;
-    rec.interimResults = false;
-    rec.onresult = (e) => {
-      const said = e.results[0][0].transcript;
-      log("HEARD: \"" + said + "\"");
-      handle(said);
-    };
-    rec.onerror = (e) => {
-      log("recognition error: " + e.error);
-      if (e.error === "not-allowed") { wantListening = false; setStatus("Microphone blocked. Allow it in Chrome site settings."); }
-    };
-    rec.onend = () => { log("recognition ended"); setTimeout(startRec, 300); };
+  rec = new SR();
+  rec.lang = "en-US";
+  rec.continuous = true;
+  rec.interimResults = false;
+  rec.onresult = (e) => {
+    if (speaking) return;
+    const r = e.results[e.results.length - 1];
+    if (!r.isFinal) return;
+    const said = r[0].transcript;
+    log("HEARD: \"" + said + "\"");
+    handle(said);
+  };
+  rec.onerror = (e) => {
+    if (e.error === "no-speech" || e.error === "aborted") return;
+    log("recognition error: " + e.error);
+    if (e.error === "not-allowed") {
+      wantListening = false;
+      setStatus("Microphone blocked. Allow it in Chrome site settings.");
+    }
+  };
+  rec.onend = () => { if (wantListening) setTimeout(startRec, 150); };
   }
-
+  
   function normalize(t) {
     return t.toLowerCase().trim()
       .replace(/you ?tube/g, "youtube")
