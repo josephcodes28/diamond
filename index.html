@@ -31,7 +31,7 @@
 
 <script>
   // Replace these with real numbers, including country code (example: +15551234567)
-  const CONTACTS = { mom: "+10000000000", dad: "+10000000001" };
+  const CONTACTS = { mom: "+23480114207235", dad: "+10000000001" };
   const WAKE_WORDS = ["hey diamond", "hello diamond", "hi diamond", "okay diamond"];
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -42,6 +42,8 @@
   let listening = false, awake = false, speaking = false;
   let recognition = null, flashTrack = null, flashOn = false;
   let speakId = 0, sleepTimer = null;
+  let ignoreUntil = 0;   // ignore mic input until this time (prevents Diamond hearing itself)
+  let lastGreet = 0;
 
   function setStatus(t) { statusEl.textContent = t; }
 
@@ -73,8 +75,9 @@
     const done = () => {
       if (id !== speakId) return;
       speaking = false;
+      ignoreUntil = Date.now() + 2000;   // wait 2 seconds before listening again
       orb.className = "orb listening";
-      restartListening();
+      setTimeout(restartListening, 2000);
     };
     u.onend = done;
     u.onerror = done;
@@ -86,12 +89,16 @@
     speechSynthesis.cancel();
     speaking = false;
     awake = false;
+    ignoreUntil = Date.now() + 1500;
     orb.className = "orb listening";
     setStatus("Diamond is quiet. Say Hey Diamond to wake me.");
-    restartListening();
+    setTimeout(restartListening, 1500);
   }
 
   function greet() {
+    const now = Date.now();
+    if (now - lastGreet < 8000) return;   // never greet twice in 8 seconds
+    lastGreet = now;
     wakeUp();
     speak("Hello sir, I am Diamond. What do you want me to do for you today?");
   }
@@ -102,11 +109,12 @@
     r.continuous = true;
     r.interimResults = false;
     r.onresult = (e) => {
+      if (speaking || Date.now() < ignoreUntil) return;
       const last = e.results[e.results.length - 1][0].transcript.toLowerCase().trim();
       heardEl.textContent = "Heard: " + last;
       handleSpeech(last);
     };
-    r.onend = () => restartListening();
+    r.onend = () => { if (!speaking) restartListening(); };
     r.onerror = (e) => {
       if (e.error === "not-allowed") {
         setStatus("Microphone is blocked. Allow it in Chrome's site settings.");
@@ -117,13 +125,18 @@
   }
 
   function handleSpeech(text) {
+    // Ignore anything that sounds like Diamond's own words
+    if (/i am diamond|what do you want me to do/.test(text)) return;
+
     const wake = WAKE_WORDS.find(w => text.includes(w));
     if (!awake && !wake) return;
 
     if (wake) {
-      wakeUp();
       const rest = text.split(wake)[1].trim();
-      if (!rest) { greet(); return; }
+      if (!rest) {
+        if (awake) { speak("Yes sir?"); } else { greet(); }
+        return;
+      }
       text = rest;
     }
     wakeUp();
@@ -133,8 +146,8 @@
       return;
     }
     if (/flash ?light|torch/.test(text)) {
-      const turnOn = /turn on|on/.test(text) && !/off/.test(text);
       const turnOff = /off/.test(text);
+      const turnOn = !turnOff && /on/.test(text);
       toggleFlash(turnOff ? false : turnOn ? true : !flashOn);
       return;
     }
@@ -209,17 +222,16 @@
     let lastClap = 0, lastPeak = 0;
 
     setInterval(() => {
+      if (speaking || Date.now() < ignoreUntil) return;   // don't clap-detect Diamond's own voice
       analyser.getFloatTimeDomainData(buf);
       let peak = 0;
       for (const v of buf) peak = Math.max(peak, Math.abs(v));
       const now = Date.now();
-      // Threshold 0.3: if claps are missed, lower it. If random noise triggers it, raise it.
+      // Threshold 0.3: lower it if claps are missed, raise it if noise triggers it
       if (peak > 0.3 && now - lastPeak > 200) {
         lastPeak = now;
         if (lastClap && now - lastClap < 1000) {
           lastClap = 0;
-          speechSynthesis.cancel();
-          speaking = false;
           greet();
         } else {
           lastClap = now;
@@ -247,6 +259,10 @@
   });
 
   document.getElementById("stop").addEventListener("click", stopAll);
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js");
+  }
 </script>
 </body>
 </html>
