@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diamond Test</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #0d1b2a; color: #f0f0f0; padding: 20px; }
+  button { font-size: 20px; padding: 14px; margin: 6px 0; width: 100%; border: none;
+           border-radius: 8px; background: #7fdbff; color: #0d1b2a; }
+  #log { margin-top: 20px; font-size: 18px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h2>Diamond Test</h2>
+<button id="b1">1. Test voice out</button>
+<button id="b2">2. Test microphone</button>
+<button id="b3">3. Test voice listening</button>
+<div id="log">Tap each button in order.</div>
+
+<script>
+  const log = (t) => document.getElementById("log").textContent += "\n" + t;
+
+  document.getElementById("b1").onclick = () => {
+    if (!("speechSynthesis" in window)) { log("Voice out: NOT supported"); return; }
+    log("Voice out: speaking now...");
+    const u = new SpeechSynthesisUtterance("Hello sir, this is Diamond test.");
+    u.lang = "en-US";
+    u.onend = () => log("Voice out: OK, finished speaking.");
+    u.onerror = (e) => log("Voice out: ERROR " + e.error);
+    speechSynthesis.speak(u);
+  };
+
+  document.getElementById("b2").onclick = async () => {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+      log("Microphone: OK, permission granted.");
+      s.getTracks().forEach(t => t.stop());
+    } catch (e) {
+      log("Microphone: ERROR " + e.name + " (" + e.message + ")");
+    }
+  };
+
+  document.getElementById("b3").onclick = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { log("Listening: NOT supported in this browser. Use Chrome."); return; }
+    const r = new SR();
+    r.lang = "en-US";
+    log("Listening: say something now...");
+    r.onresult = (e) => log("Heard: \"" + e.results[0][0].transcript + "\" (listening OK)");
+    r.onerror = (e) => log("Listening: ERROR " + e.error);
+    r.onend = () => log("Listening: finished.");
+    r.start();
+  };
+</script>
+</body>
+</html>
