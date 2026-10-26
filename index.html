@@ -124,34 +124,43 @@
     return r;
   }
 
-  function handleSpeech(text) {
-    // Ignore anything that sounds like Diamond's own words
-    if (/i am diamond|what do you want me to do/.test(text)) return;
+  function normalize(t) {
+    return t.toLowerCase().trim()
+      .replace(/you ?tube/g, "youtube")
+      .replace(/\b(dimond|dymond|daimond|diamon|diamund|diamant)\b/g, "diamond")
+      .replace(/\s+/g, " ");
+  }
 
-    const wake = WAKE_WORDS.find(w => text.includes(w));
-    if (!awake && !wake) return;
+  function handleSpeech(raw) {
+    const text = normalize(raw);
 
-    if (wake) {
-      const rest = text.split(wake)[1].trim();
-      if (!rest) {
+    // Ignore Diamond's own voice coming back through the microphone
+    if (/hello sir|i am diamond|what do you want me to do/.test(text)) return;
+
+    const hasName = /\bdiamond\b/.test(text);
+    if (!awake && !hasName) return;
+
+    let cmd = text;
+    if (hasName) {
+      cmd = text.replace(/^.*?\bdiamond\b\s*/, "").trim();
+      if (!cmd) {
         if (awake) { speak("Yes sir?"); } else { greet(); }
         return;
       }
-      text = rest;
     }
     wakeUp();
 
-    if (/shut up|enough|be quiet|stop talking/.test(text)) {
+    if (/shut up|enough|be quiet|stop talking/.test(cmd)) {
       stopAll();
       return;
     }
-    if (/flash ?light|torch/.test(text)) {
-      const turnOff = /off/.test(text);
-      const turnOn = !turnOff && /on/.test(text);
+    if (/flash ?light|torch/.test(cmd)) {
+      const turnOff = /\boff\b/.test(cmd);
+      const turnOn = !turnOff && /\bon\b/.test(cmd);
       toggleFlash(turnOff ? false : turnOn ? true : !flashOn);
       return;
     }
-    const callMatch = text.match(/^call (.+)/);
+    const callMatch = cmd.match(/^call (.+)/);
     if (callMatch) {
       const who = callMatch[1].trim();
       const num = CONTACTS[who];
@@ -163,25 +172,26 @@
       }
       return;
     }
-    if (text.includes("open youtube")) {
+    if (cmd.includes("youtube") && /open|go to/.test(cmd)) {
       window.open("https://www.youtube.com", "_blank");
       speak("Opening YouTube.");
       return;
     }
-    if (text.startsWith("play ")) {
-      const q = text.replace(/^play\s+/, "");
+    if (cmd.startsWith("play ")) {
+      const q = cmd.replace(/^play\s+/, "");
       window.open("https://www.youtube.com/results?search_query=" + encodeURIComponent(q), "_blank");
       speak("Playing " + q + " on YouTube.");
       return;
     }
-    if (text.startsWith("search")) {
-      const q = text.replace(/^search( the web)?( for)?\s*/, "");
+    if (cmd.startsWith("search")) {
+      const q = cmd.replace(/^search( the web)?( for)?\s*/, "");
       window.open("https://www.google.com/search?q=" + encodeURIComponent(q), "_blank");
       speak("Searching for " + q + ".");
       return;
     }
-    askDiamond(text);
+    askDiamond(cmd);
   }
+  
 
   async function askDiamond(question) {
     setStatus("Thinking...");
