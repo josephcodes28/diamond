@@ -125,7 +125,7 @@
   function route(cmd) {
     log("COMMAND: " + cmd);
 
-    if (/shut up|enough|be quiet|stop talking/.test(cmd)) {
+    if (/shut up|enough|be quiet|stop talking|^stop$/.test(cmd)) {
       speechSynthesis.cancel();
       speaking = false;
       setStatus("Diamond is quiet.");
@@ -191,7 +191,11 @@
       });
       const data = await r.json();
       log("AI response status: " + r.status);
-      speak(data.reply || data.error || "I could not get an answer.");
+      if (r.status === 429) {
+        speak("My AI brain is out of free usage for now. Check ai dot dev slash rate-limit, then try again later.");
+        return;
+      }
+      speak(data.reply || "I could not get an answer. Try again.");
     } catch (e) {
       log("AI error: " + e.message);
       speak("I could not reach the AI service. Check your internet.");
