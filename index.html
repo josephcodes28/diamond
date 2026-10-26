@@ -87,11 +87,13 @@
     log("recognition error: " + e.error);
     if (e.error === "not-allowed") {
       wantListening = false;
-      setStatus("Microphone blocked. Allow it in Chrome site settings.");
+      setStatus("Microphone is blocked. Tap the lock icon by the web address, open Permissions, and allow Microphone. Then reload.");
+    } else if (e.error === "network") {
+      setStatus("No connection to the voice service. Check your internet, then tap Start Diamond again.");
+      wantListening = false;
     }
   };
-  rec.onend = () => { if (wantListening) setTimeout(startRec, 150); };
-  }
+  
   
   function normalize(t) {
     return t.toLowerCase().trim()
@@ -113,7 +115,11 @@
     if (!cmd) { speak("Yes sir?"); return; }
     route(cmd);
   }
-
+if (cmd.includes("youtube")) {:
+if (/don'?t want (this|that|it)|no,? (not this|find another|next)/.test(cmd)) {
+      askDiamond("Joseph rejected the last job suggestion. Find a different remote job in another category, with the title, what the client wants, and a short proposal.");
+      return;
+}
   function route(cmd) {
     log("COMMAND: " + cmd);
 
