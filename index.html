@@ -8,7 +8,7 @@
   body { font-family: Arial, sans-serif; background: #0d1b2a; color: #f0f0f0;
          padding: 20px; text-align: center; }
   h1 { color: #7fdbff; font-size: 40px; margin: 10px 0; }
-  #status { font-size: 22px; min-height: 60px; margin: 10px 0; }
+  #status { font-size: 22px; min-height: 70px; margin: 10px 0; }
   button { font-size: 20px; padding: 14px 24px; margin: 6px; border: none;
            border-radius: 10px; background: #7fdbff; color: #0d1b2a; }
   #stop { background: #ff6b6b; color: #fff; }
@@ -35,66 +35,69 @@
   const logEl = document.getElementById("log");
   const actionBtn = document.getElementById("action");
 
-  let rec = null, wantListening = false, speaking = false, awakeUntil = 0, flashTrack = null, flashOn = false;
+  let rec = null, wantListening = false, speaking = false;
+  let awakeUntil = 0, flashTrack = null, flashOn = false;
 
-  function log(t) { logEl.textContent += new Date().toLocaleTimeString() + "  " + t + "\n"; logEl.scrollTop = logEl.scrollHeight; }
+  function log(t) {
+    logEl.textContent += new Date().toLocaleTimeString() + "  " + t + "\n";
+    logEl.scrollTop = logEl.scrollHeight;
+  }
   function setStatus(t) { statusEl.textContent = t; log("STATUS: " + t); }
-
-  function startRec() {
-  if (!rec || !wantListening || speaking) return;
-  try { rec.start(); } catch (e) {}
-  }
-
-  function speak(text, after) {
-  setStatus(text);
-  speaking = true;
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = "en-US";
-  let done = false;
-  const finish = () => {
-    if (done) return;
-    done = true;
-    speaking = false;
-    log("finished speaking");
-    setTimeout(() => { if (after) after(); startRec(); }, 800);
-  };
-  u.onend = finish;
-  u.onerror = (e) => { log("voice error: " + e.error); finish(); };
-  speechSynthesis.speak(u);
-  setTimeout(finish, Math.min(20000, 2000 + text.length * 90));
-  }
-  
-
   function wake() { awakeUntil = Date.now() + 60000; }
   function isAwake() { return Date.now() < awakeUntil; }
 
+  function startRec() {
+    if (!rec || !wantListening || speaking) return;
+    try { rec.start(); } catch (e) {}
+  }
+
+  function speak(text, after) {
+    setStatus(text);
+    speaking = true;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "en-US";
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      speaking = false;
+      log("finished speaking");
+      setTimeout(() => { if (after) after(); startRec(); }, 800);
+    };
+    u.onend = finish;
+    u.onerror = (e) => { log("voice error: " + e.error); finish(); };
+    speechSynthesis.speak(u);
+    setTimeout(finish, Math.min(20000, 2000 + text.length * 90));
+  }
+
   function setupRec() {
-  rec = new SR();
-  rec.lang = "en-US";
-  rec.continuous = true;
-  rec.interimResults = false;
-  rec.onresult = (e) => {
-    if (speaking) return;
-    const r = e.results[e.results.length - 1];
-    if (!r.isFinal) return;
-    const said = r[0].transcript;
-    log("HEARD: \"" + said + "\"");
-    handle(said);
-  };
-  rec.onerror = (e) => {
-    if (e.error === "no-speech" || e.error === "aborted") return;
-    log("recognition error: " + e.error);
-    if (e.error === "not-allowed") {
-      wantListening = false;
-      setStatus("Microphone is blocked. Tap the lock icon by the web address, open Permissions, and allow Microphone. Then reload.");
-    } else if (e.error === "network") {
-      setStatus("No connection to the voice service. Check your internet, then tap Start Diamond again.");
-      wantListening = false;
-    }
-  };
-  
-  
+    rec = new SR();
+    rec.lang = "en-US";
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.onresult = (e) => {
+      if (speaking) return;
+      const r = e.results[e.results.length - 1];
+      if (!r.isFinal) return;
+      const said = r[0].transcript;
+      log("HEARD: \"" + said + "\"");
+      handle(said);
+    };
+    rec.onerror = (e) => {
+      if (e.error === "no-speech" || e.error === "aborted") return;
+      log("recognition error: " + e.error);
+      if (e.error === "not-allowed") {
+        wantListening = false;
+        setStatus("Microphone is blocked. Tap the lock icon by the web address, open Permissions, allow Microphone, then reload.");
+      } else if (e.error === "network") {
+        wantListening = false;
+        setStatus("No connection to the voice service. Check your internet, then tap Start Diamond again.");
+      }
+    };
+    rec.onend = () => { if (wantListening) setTimeout(startRec, 150); };
+  }
+
   function normalize(t) {
     return t.toLowerCase().trim()
       .replace(/you ?tube/g, "youtube")
@@ -104,33 +107,34 @@
 
   function handle(raw) {
     const text = normalize(raw);
-    if (/hello sir|i am diamond|what do you want me to do/.test(text)) { log("ignored (Diamond's own voice)"); return; }
-
+    if (/hello sir|i am diamond|what do you want me to do/.test(text)) {
+      log("ignored (Diamond's own voice)");
+      return;
+    }
     const hasName = /\bdiamond\b/.test(text);
-    if (!isAwake() && !hasName) { log("ignored (say Diamond first)"); return; }
-
-    let cmd = hasName ? text.replace(/^.*?\bdiamond\b[,\s]*/, "").trim() : text;
+    if (!isAwake() && !hasName) {
+      log("ignored (say Diamond first)");
+      return;
+    }
+    const cmd = hasName ? text.replace(/^.*?\bdiamond\b[,\s]*/, "").trim() : text;
     wake();
-
     if (!cmd) { speak("Yes sir?"); return; }
     route(cmd);
   }
-if (cmd.includes("youtube")) {:
-if (/don'?t want (this|that|it)|no,? (not this|find another|next)/.test(cmd)) {
-      askDiamond("Joseph rejected the last job suggestion. Find a different remote job in another category, with the title, what the client wants, and a short proposal.");
-      return;
-}
+
   function route(cmd) {
     log("COMMAND: " + cmd);
 
     if (/shut up|enough|be quiet|stop talking/.test(cmd)) {
-      speechSynthesis.cancel(); speaking = false; setStatus("Diamond is quiet.");
-      setTimeout(startRec, 500); return;
+      speechSynthesis.cancel();
+      speaking = false;
+      setStatus("Diamond is quiet.");
+      setTimeout(startRec, 500);
+      return;
     }
 
     if (/flash ?light|torch/.test(cmd)) {
-      const off = /\boff\b/.test(cmd);
-      toggleFlash(!off);
+      toggleFlash(!/\boff\b/.test(cmd));
       return;
     }
 
@@ -140,6 +144,11 @@ if (/don'?t want (this|that|it)|no,? (not this|find another|next)/.test(cmd)) {
       const num = CONTACTS[who];
       if (!num) { speak("I don't have " + who + " saved yet."); return; }
       speak("Calling " + who + ".", () => { location.href = "tel:" + num; });
+      return;
+    }
+
+    if (/don'?t want (this|that|it)|no,? (not this|find another|next)/.test(cmd)) {
+      askDiamond("Joseph rejected the last job suggestion. Find a different remote job in another category, with the title, what the client wants, and a short proposal.");
       return;
     }
 
@@ -185,7 +194,7 @@ if (/don'?t want (this|that|it)|no,? (not this|find another|next)/.test(cmd)) {
       speak(data.reply || data.error || "I could not get an answer.");
     } catch (e) {
       log("AI error: " + e.message);
-      speak("I could not reach the AI service.");
+      speak("I could not reach the AI service. Check your internet.");
     }
   }
 
@@ -196,6 +205,7 @@ if (/don'?t want (this|that|it)|no,? (not this|find another|next)/.test(cmd)) {
         flashTrack = s.getVideoTracks()[0];
       }
       await flashTrack.applyConstraints({ advanced: [{ torch: on }] });
+      flashOn = on;
       speak(on ? "Flashlight on." : "Flashlight off.");
     } catch (e) {
       log("flash error: " + e.message);
@@ -203,9 +213,9 @@ if (/don'?t want (this|that|it)|no,? (not this|find another|next)/.test(cmd)) {
     }
   }
 
-  document.getElementById("start").onclick = async () => {
+  document.getElementById("start").onclick = () => {
     log("Start tapped");
-    if (!SR) { setStatus("Voice not supported. Open this page in Chrome."); return; }
+    if (!SR) { setStatus("Voice is not supported. Open this page in Chrome."); return; }
     if (!rec) setupRec();
     wantListening = true;
     wake();
@@ -213,7 +223,9 @@ if (/don'?t want (this|that|it)|no,? (not this|find another|next)/.test(cmd)) {
   };
 
   document.getElementById("stop").onclick = () => {
-    speechSynthesis.cancel(); speaking = false; setStatus("Diamond is quiet.");
+    speechSynthesis.cancel();
+    speaking = false;
+    setStatus("Diamond is quiet.");
     setTimeout(startRec, 500);
   };
 </script>
